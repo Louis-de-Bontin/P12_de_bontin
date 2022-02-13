@@ -1,10 +1,7 @@
-from django.shortcuts import get_object_or_404, get_list_or_404
-from django.core import exceptions
+from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import NotFound, PermissionDenied
 from django.db.models import Q
 from rest_framework.viewsets import ModelViewSet
-from rest_framework.response import Response
-from rest_framework import status
 from datetime import datetime
 import pytz
 from rest_framework_simplejwt.authentication import JWTAuthentication
@@ -15,7 +12,45 @@ from crm import serializers, models
 from users.models import User as MODEL_USER
 
 
-class CustomerViewset(ModelViewSet):
+class CheckPathMixin:
+    """
+    Commun methods.
+    """
+    def check_path_user(self):
+        """
+        If the user try to access special methods through the /users/
+        endpoint, it returns an error.
+        """
+        elements_path = self.request.get_full_path().split('/')
+        if 'users' == elements_path[2]:
+            message = 'Method not allowed with this path'
+            raise PermissionDenied(message, code=403)
+
+    def check_path_user_customer(self):
+        """
+        If the user try to access special methods through the /customer/
+        endpoint, it returns an error.
+        """
+        elements_path = self.request.get_full_path().split('/')
+        if 'users' == elements_path[2] or 'customers' == elements_path[2]:
+            message = 'Method not allowed with this path'
+            raise PermissionDenied(message, code=403)
+    
+    def check_path_sign(self):
+        """
+        If the user try to do anything else than sign with the /sign/
+        endpoint, it returns an error.
+        """
+        try:
+            elements_path = self.request.get_full_path().split('/')
+            if 'sign' == elements_path[4]:
+                if self.request.method != 'POST':
+                    message = 'Method not allowed'
+                    raise PermissionDenied(message, code=403)
+        except:
+            pass
+
+class CustomerViewset(CheckPathMixin, ModelViewSet):
     serializer_class = serializers.CustomerListSerializer
     detail_serializer_class = serializers.CustomerDetailSerializer
 
@@ -24,6 +59,14 @@ class CustomerViewset(ModelViewSet):
         permissions.CustomerPermissions]
 
     def get_queryset(self):
+        """
+        The queryset is a bit complicated. This is here that most of the security happens.
+        It checks the path, the status of the connected user and returns the appropriate
+        queryset.
+        A MANAGER can pretty much see everything, but a SELLER can only see the customers
+        he is in charge of, and a SUPPORT member can only see the customer he is related
+        with throungh a contract.
+        """
         elements_path = self.request.get_full_path().split('/')
         current_user = self.request.user
         is_manager = current_user.role == 'MANAGER'
@@ -35,20 +78,23 @@ class CustomerViewset(ModelViewSet):
                     message = 'This user is manager, therefore he is in charge of no customer'
                     raise NotFound(detail=message, code=404)
                 elif user.role == 'SELLER':
-                    return get_list_or_404(models.Customer, seller=user)
+                    return models.Customer.objects.filter(seller=user)
                 elif user.role == 'SUPPORT':
                     customers_list = models.Contract.objects.filter(
                                 support=user).values('customer')
                     return models.Customer.objects.filter(
                                 id__in=customers_list)
             else:
+                """
+                Only a MANAGER can access the /users/ endpoint and his extentions.
+                """
                 message = 'You are not authorized to perform this action'
                 raise PermissionDenied(message, code=403)
         else:
             if is_manager:
                 return models.Customer.objects.all()
             elif current_user.role == 'SELLER':
-                return get_list_or_404(models.Customer, seller=current_user)
+                return models.Customer.objects.filter(seller=current_user)
             elif current_user.role == 'SUPPORT':
                 customers_list = models.Contract.objects.filter(
                             support=current_user).values('customer')
@@ -62,13 +108,27 @@ class CustomerViewset(ModelViewSet):
             return super().get_serializer_class()
     
     def perform_create(self, serializer):
+        """
+        It checks the path because it is only possible to create a customer from
+        the /customers/ endpoint. Same thing for update and destroy.
+        Only a SELLER or a MANAGER is allowed to perform this action.
+        """
+        self.check_path_user()
         if self.request.user.role == 'SELLER':
             serializer.save(seller=self.request.user)
         
         return super().perform_create(serializer)
+    
+    def perform_update(self, serializer):
+        self.check_path_user()
+        return super().perform_update(serializer)
+    
+    def perform_destroy(self, instance):
+        self.check_path_user()
+        return super().perform_destroy(instance)
 
 
-class ContractViewset(ModelViewSet):
+class ContractViewset(CheckPathMixin, ModelViewSet):
     serializer_class = serializers.ContractListSerializer
     detail_serializer_class = serializers.ContractDetailSerializer
 
@@ -91,6 +151,7 @@ class ContractViewset(ModelViewSet):
         are not related to a customer anymore.
         """
         elements_path = self.request.get_full_path().split('/')
+        self.check_path_sign()
         current_user = self.request.user
         is_manager = current_user.role == 'MANAGER'
 
@@ -101,7 +162,7 @@ class ContractViewset(ModelViewSet):
                     message = 'This user is manager, therefore he is in charge of no customer'
                     raise NotFound(detail=message, code=404)
                 else:
-                    return get_list_or_404(models.Contract, Q(seller=user) | Q(support=user))
+                    return models.Contract.objects.filter(Q(seller=user) | Q(support=user))
             else:
                 message = 'You are not authorized to perform this action'
                 raise PermissionDenied(message, code=403)
@@ -110,21 +171,16 @@ class ContractViewset(ModelViewSet):
             customer = get_object_or_404(models.Customer,
                             id=self.kwargs['customer_pk'])
             if is_manager:
-                return get_list_or_404(models.Contract, customer=customer)
+                return models.Contract.objects.filter(customer=customer)
             else:
-                return get_list_or_404(
-                    models.Contract,
-                    Q(customer=customer) & (Q(seller=current_user) | Q(support=current_user))
-                )    
+                return models.Contract.objects.filter(
+                    Q(customer=customer) & (Q(seller=current_user) | Q(support=current_user)))    
         
         else:
             if is_manager:
                 return models.Contract.objects.all()
             else:
-                return get_list_or_404(
-                    models.Contract,
-                    Q(seller=current_user) | Q(support=current_user)
-                )                  
+                return models.Contract.objects.filter(Q(seller=current_user) | Q(support=current_user))                  
     
     def get_serializer_class(self):
         if (self.action == 'retrieve' or self.action == 'create'
@@ -134,35 +190,64 @@ class ContractViewset(ModelViewSet):
             return super().get_serializer_class()
     
     def perform_create(self, serializer):
-        if 'support' not in self.request.POST or 'customer' not in self.request.POST:
-            return Response({'Message': 'Support or customer field missing'},
-                status=status.HTTP_400_BAD_REQUEST)
+        """
+        A user can only create a contract from the /contracts/ endpoint.
+        If the user is MANAGER, he needs to choose who will be the seller, the customer
+        and the support member. If he is a SELLER, the seller is automaticly associated
+        with him. A SUPPORT can't create a contract.
+        This function also check if the support and seller selected are really SELLER
+        and SUPPORT, otherwise it raises an error.
+        """
+        self.check_path_user_customer()
+        self.check_fields()
+        if self.request.user.role == 'MANAGER':
+            if 'support' not in self.request.POST or 'customer' not in self.request.POST or 'seller' not in self.request.POST:
+                message = 'Missing fields (support, customer or seller)'
+                raise PermissionDenied(message, code=403)
+
+            seller = MODEL_USER.objects.get(id=self.request.POST['seller'])
+            if seller.role != 'SELLER':
+                message = 'The seller selected is not SELLER)'
+                raise PermissionDenied(message, code=403)
         
-        serializer.save(
-            support=MODEL_USER.objects.get(id=self.request.POST['support']),
-            customer=models.Customer.objects.get(id=self.request.POST['customer']),
-            seller=MODEL_USER.objects.get(id=self.request.POST['seller'])
-        )
+        if self.request.user.role == 'SELLER':
+            seller = self.request.user
+        
+        support = MODEL_USER.objects.get(id=self.request.POST['support'])
+        if support.role != 'SUPPORT':
+            message = 'The support selected is not SUPPORT'
+            raise PermissionDenied(message, code=403)
+        
+        customer = models.Customer.objects.get(id=self.request.POST['customer'])
+        if customer.existing == False:
+            customer.existing = True
+            customer.save()
+        
+        serializer.save(support=support, customer=customer, seller=seller)
         return super().perform_create(serializer)
     
     def perform_update(self, serializer):
+        """
+        Do pretty much the save stuff and same verification than the create action.
+        """
+        self.check_path_user_customer()
+        self.check_fields()
         contract = models.Contract.objects.get(id=self.kwargs['pk'])
-        forbiden_elements = [
-            'event',
-            'seller',
-            'signed',
-            'date_created',
-            'date_updated',
-            'date_signed'
-        ]
-
-        for ele in forbiden_elements:
-            if ele in self.request.POST:
-                raise exceptions.FieldError('You are trying to update unupdatable fields.')
-
+        
         if 'support' in self.request.POST:
-            serializer.save(support=MODEL_USER.objects.get(
-                            id=self.request.POST['support']))
+            support = MODEL_USER.objects.get(id=self.request.POST['support'])
+            if support.role != 'SUPPORT':
+                message = 'The support selected is not SUPPORT'
+                raise PermissionDenied(message, code=403)
+            serializer.save(support=support)
+        
+        if 'seller' in self.request.POST:
+            seller = MODEL_USER.objects.get(id=self.request.POST['seller'])
+            if seller.role != 'SELLER':
+                message = 'The seller selected is not SELLER'
+                raise PermissionDenied(message, code=403)
+            serializer.save(seller=seller)
+
         if 'customer' in self.request.POST:
             serializer.save(customer=models.Customer.objects.get(
                             id=self.request.POST['customer']))
@@ -170,8 +255,26 @@ class ContractViewset(ModelViewSet):
         serializer.save()
         return contract
     
+    def perform_destroy(self, instance):
+        """
+        A contract is not directly deletable. A user must destroy an event, and
+        the contract will be deleted in cascade.
+        """
+        message = 'You can not errase a contract'
+        raise PermissionDenied(message, code=403)
+    
+    def check_fields(self):
+        """
+        Some fields must only be automaticly updatable. This method secure those
+        fields.
+        """
+        forbiden_elements = ['event', 'signed', 'date_signed']
+        for ele in forbiden_elements:
+            if ele in self.request.POST:
+                message = 'You are trying to update unupdatable fields'
+                raise PermissionDenied(message, code=403)
 
-class EventViewset(ModelViewSet):
+class EventViewset(CheckPathMixin, ModelViewSet):
     serializer_class = serializers.EventListSerializer
     detail_serializer_class = serializers.EventDetailSerializer
 
@@ -180,7 +283,14 @@ class EventViewset(ModelViewSet):
         permissions.EventPermission]
 
     def get_queryset(self):
+        """
+        The queryset is similar than for the customers and contracts. Only a MANAGER
+        can acces the /user/ extentions endpoint.
+        A SELLER can only see the events related to his customers, and a SUPPORT member
+        can only see the event he is in charge of (throung a contract).
+        """
         elements_path = self.request.get_full_path().split('/')
+        self.check_path_sign()
         current_user = self.request.user
         is_manager = current_user.role == 'MANAGER'
 
@@ -214,7 +324,8 @@ class EventViewset(ModelViewSet):
             else:
                 events_list = models.Contract.objects.filter(
                     Q(seller=current_user) | Q(support=current_user)).values('event')
-                return models.Event.objects.filter(id_in=events_list)      
+                print(events_list)
+                return models.Event.objects.filter(id__in=events_list)
     
     def get_serializer_class(self):
         if (self.action == 'retrieve' or self.action == 'create'
@@ -227,9 +338,11 @@ class EventViewset(ModelViewSet):
         """
         Update the status of the contract when creating an event.
         """
+        self.check_path_user_customer()
         contract = models.Contract.objects.get(id=self.kwargs['contract_pk'])
         if contract.signed:
-            raise exceptions.FieldError('Contract already signed')
+            message = 'This contract is already signed'
+            raise PermissionDenied(message, code=403)
 
         event = serializer.save()
         contract.event = event
@@ -242,7 +355,17 @@ class EventViewset(ModelViewSet):
         """
         Prevent a user from updating a finished event.
         """
+        self.check_path_user_customer()
         if models.Event.objects.get(id=self.kwargs['pk']).finished:
-            raise exceptions.BadRequest("Can\'t update a finished event")
+            message = 'Can\'t update a finished event'
+            raise PermissionDenied(message, code=403)
         return super().perform_update(serializer)
+    
+    def perform_destroy(self, instance):
+        """
+        Deleting an event also delete the associated contract.
+        Only a MANAGER can perform this action.
+        """
+        self.check_path_user_customer()
+        return super().perform_destroy(instance)
         

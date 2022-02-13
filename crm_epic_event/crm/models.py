@@ -1,7 +1,7 @@
 from django.db import models
 from django.conf import settings
 from phone_field import PhoneField
-from datetime import datetime, timedelta
+from datetime import datetime
 from rest_framework.exceptions import PermissionDenied
 import pytz
 
@@ -16,8 +16,6 @@ class Customer(models.Model):
     date_updated = models.DateTimeField(auto_now_add=True)
     existing = models.BooleanField(default=False)
     notes = models.TextField(max_length=10000, blank=True, null=True)
-    # Quand j'aurais fais l'autentification, il faudra que par défault ce soit l'utilisateur connecté si il est vendeur
-    # ou que le champ soit requis si c'est un manager qui est connecté
     seller = models.ForeignKey(settings.AUTH_USER_MODEL, 
         null=True, on_delete=models.SET_NULL, related_name='customer')
 
@@ -40,9 +38,9 @@ class Customer(models.Model):
 
     def __str__(self):
         if self.last_name and self.compagny_name:
-            return self.first_name + " " + self.last_name + "; " + self.compagny_name
+            return str(self.first_name) + " " + str(self.last_name) + "; " + str(self.compagny_name)
         elif self.last_name:
-            return self.first_name + " " + self.last_name
+            return str(self.first_name) + " " + str(self.last_name)
         return self.compagny_name
             
 
@@ -65,7 +63,7 @@ class Event(models.Model):
         """
         utc=pytz.UTC
         if self.date_event < utc.localize(datetime.now()):
-            raise exceptions.FieldError(
+            raise PermissionDenied(
                 'Event date can\'t be before event creation')
     
     def __str__(self):
@@ -77,7 +75,7 @@ class Contract(models.Model):
     ATTENTION : si je modifie une signature, les 2 events restent
     Lors de la création d'un event, l'event n'est pas lié au contrat
     """
-    support = models.ForeignKey(settings.AUTH_USER_MODEL, null=True,
+    support = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=False,
         on_delete=models.SET_NULL, related_name='in_charge')
     seller = models.ForeignKey(settings.AUTH_USER_MODEL, null=True,
         on_delete=models.SET_NULL, related_name='writer')
@@ -105,7 +103,7 @@ class Contract(models.Model):
         Signing a contract automaticly create an event with the informations privided.
         """
         if self.signed == True:
-            raise exceptions.ValidationError('Contract already signed')
+            raise PermissionDenied('Contract already signed')
 
         self.signed = True
         self.date_signed = datetime.now()
@@ -117,10 +115,4 @@ class Contract(models.Model):
         event.save()
 
         self.event = event
-        self.save()
-
-    def get_seller(self):
-        """
-        User connected
-        """
-        pass        
+        self.save()   

@@ -60,6 +60,7 @@ class ContractDetailSerializer(ModelSerializer):
         return instance.customer.__str__()
     
     def get_support(self, instance):
+        print(instance)
         return instance.support.__str__()
     
     def get_seller(self, instance):
