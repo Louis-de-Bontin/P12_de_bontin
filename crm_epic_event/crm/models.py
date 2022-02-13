@@ -1,8 +1,9 @@
 from django.db import models
 from django.conf import settings
 from phone_field import PhoneField
-from datetime import datetime
-from django.core import exceptions
+from datetime import datetime, timedelta
+from rest_framework.exceptions import PermissionDenied
+import pytz
 
 
 class Customer(models.Model):
@@ -21,32 +22,69 @@ class Customer(models.Model):
         null=True, on_delete=models.SET_NULL, related_name='customer')
 
     def save(self, *args, **kwargs):
-        if not self.compagny_name and not self.last_name:
-                raise exceptions.FieldError(
-                    'compagny_name and last_name can\'t be both empty.')
+        try:
+            self.check_fields()
+        except PermissionDenied as e:
+            raise e
         self.date_updated = datetime.now()
         super().save(*args, **kwargs)
+    
+    def check_fields(self):
+        """
+        A customer is identifiable with a name, a compagny, or both.
+        Thats why at least of of those fiels is required.
+        """
+        if not self.compagny_name and not self.last_name:
+            raise PermissionDenied(
+                'compagny_name and last_name can\'t be both empty.')
+
+    def __str__(self):
+        if self.last_name and self.compagny_name:
+            return self.first_name + " " + self.last_name + "; " + self.compagny_name
+        elif self.last_name:
+            return self.first_name + " " + self.last_name
+        return self.compagny_name
             
 
 class Event(models.Model):
     name = models.CharField(max_length=25)
     location = models.CharField(max_length=255)
+    finished = models.BooleanField(default=False)
     date_created = models.DateTimeField(auto_now_add=True)
     date_updated = models.DateTimeField(auto_now_add=True)
     date_event = models.DateTimeField()
 
     def save(self, *args, **kwargs):
         self.date_updated = datetime.now()
+        self.date_event_not_passed()
         super().save(*args, **kwargs)
+    
+    def date_event_not_passed(self):
+        """
+        It is not possible to create an event with a passed date.
+        """
+        utc=pytz.UTC
+        if self.date_event < utc.localize(datetime.now()):
+            raise exceptions.FieldError(
+                'Event date can\'t be before event creation')
+    
+    def __str__(self):
+        return self.name
     
 
 class Contract(models.Model):
+    """
+    ATTENTION : si je modifie une signature, les 2 events restent
+    Lors de la création d'un event, l'event n'est pas lié au contrat
+    """
     support = models.ForeignKey(settings.AUTH_USER_MODEL, null=True,
         on_delete=models.SET_NULL, related_name='in_charge')
+    seller = models.ForeignKey(settings.AUTH_USER_MODEL, null=True,
+        on_delete=models.SET_NULL, related_name='writer')
     customer = models.ForeignKey(Customer, null=True,
         on_delete=models.SET_NULL, related_name='customer')
     event = models.OneToOneField(Event, null=True,
-        on_delete=models.SET_NULL, related_name='event')
+        on_delete=models.CASCADE, related_name='event')
     date_created = models.DateTimeField(auto_now_add=True)
     date_updated = models.DateTimeField(auto_now_add=True)
     signed = models.BooleanField(default=False)
@@ -54,5 +92,35 @@ class Contract(models.Model):
     due = models.FloatField(max_length=10)
 
     def save(self, *args, **kwargs):
+        """
+        A contract with a non existing customer update his status existing to True.
+        """
         self.date_updated = datetime.now()
+        self.customer.existing = True
+        self.customer.save()
         super().save(*args, **kwargs)
+
+    def sign(self, name_event, location_event, date_event):
+        """
+        Signing a contract automaticly create an event with the informations privided.
+        """
+        if self.signed == True:
+            raise exceptions.ValidationError('Contract already signed')
+
+        self.signed = True
+        self.date_signed = datetime.now()
+
+        event = Event()
+        event.name=name_event
+        event.location=location_event
+        event.date_event=datetime.strptime(date_event, '%d/%m/%y %H:%M')
+        event.save()
+
+        self.event = event
+        self.save()
+
+    def get_seller(self):
+        """
+        User connected
+        """
+        pass        
