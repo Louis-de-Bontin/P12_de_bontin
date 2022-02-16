@@ -8,19 +8,24 @@
 - Clone the repository `git clone https://github.com/likhardcore/P12_de_bontin.git`
 - Enter the folder `cd P12_de_bontin`
 - Create a virtual environement `python3 -m venv env`
+- Activate the virtual environement `source env/bin/activate`
 - Install the dependencies `pip install -r requirements.txt`
 - Enter the app `cd crm_epic_event`
 ### Setting up the database
 - Install PostGreSQL
-- Create a new database named `crm_epic_events`
-- In the file `crm_epic_event/settings.py`, replace the user and the password by you own.
+- Install PGAdmin
+- In the UX of PGAdmin, create a new database named `crm_epic_events`
+- In the file `crm_epic_event/settings.py`, in the `DATABASE` dictionary, replace `USER` and `PASSWORD` by you own
 - Make the migrations `python3 manage.py makemigrations` then `python3 manage.py migrate`
 
 ### Setting up the server
+- Create a `superuser` to be able to use the API `
 - Launch the server `python3 manage.py runserver`
+- You can now interact with the endpoints via Postman, or any similar software
 
 ### Postman
 - For the detailed documentation, click [here](https://documenter.getpostman.com/view/17381028/UVkgyeid)
+- Don't forget to login with the `superuser` you created earlier to start create `MANAGER`, `SELLER` and `SUPPORT` and try the differents permissions and instances available as described in the Postman doc
 
 
 ### Notable points
