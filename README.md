@@ -19,7 +19,8 @@
 - Make the migrations `python3 manage.py makemigrations` then `python3 manage.py migrate`
 
 ### Setting up the server
-- Create a `superuser` to be able to use the API `
+- Create a `superuser` to be able to use the API `python3 manage.py createsuperuser`
+- Follow the steps
 - Launch the server `python3 manage.py runserver`
 - You can now interact with the endpoints via Postman, or any similar software
 
