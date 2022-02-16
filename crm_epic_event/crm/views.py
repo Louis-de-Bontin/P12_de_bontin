@@ -11,7 +11,6 @@ from crm import permissions
 from crm import serializers, models
 from users.models import User as MODEL_USER
 
-
 class CheckPathMixin:
     """
     Commun methods.
@@ -56,9 +55,9 @@ class CustomerViewset(CheckPathMixin, ModelViewSet):
 
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated,
-        permissions.CustomerPermissions]
+                    permissions.CustomerPermissions]
 
-    def get_queryset(self):
+    def fetch_queryset(self):
         """
         The queryset is a bit complicated. This is here that most of the security happens.
         It checks the path, the status of the connected user and returns the appropriate
@@ -99,6 +98,22 @@ class CustomerViewset(CheckPathMixin, ModelViewSet):
                 customers_list = models.Contract.objects.filter(
                             support=current_user).values('customer')
                 return models.Customer.objects.filter(id__in=customers_list)
+    
+    def get_queryset(self):
+        print(self.request.user.id)
+        queryset = self.fetch_queryset()
+        last_name = self.request.query_params.get('last_name')
+        compagny_name = self.request.query_params.get('compagny_name')
+        email = self.request.query_params.get('email')
+        
+        queryset = queryset.filter(last_name__icontains=last_name
+                            ) if last_name != None and last_name != '' else queryset
+        queryset = queryset.filter(compagny_name__icontains=compagny_name
+                            ) if compagny_name != None and compagny_name != '' else queryset
+        queryset = queryset.filter(email__icontains=email
+                            ) if email != None and email != '' else queryset
+
+        return queryset
 
     def get_serializer_class(self):
         if (self.action == 'retrieve' or self.action == 'create'
@@ -133,12 +148,10 @@ class ContractViewset(CheckPathMixin, ModelViewSet):
     detail_serializer_class = serializers.ContractDetailSerializer
 
     authentication_classes = [JWTAuthentication]
-    permission_classes = [
-        IsAuthenticated,
-        permissions.ContractPermissions
-    ]
+    permission_classes = [IsAuthenticated,
+                    permissions.ContractPermissions]
 
-    def get_queryset(self):
+    def fetch_queryset(self):
         """
         Quite complicated because this Viewset is user by 3 endpoints, and they all have
         differents queryset.
@@ -157,7 +170,7 @@ class ContractViewset(CheckPathMixin, ModelViewSet):
 
         if 'users' == elements_path[2]:
             if is_manager:
-                user = MODEL_USER.objects.get(id=self.kwargs['user_pk'])
+                user = get_object_or_404(MODEL_USER, id=self.kwargs['user_pk'])
                 if user.role == 'MANAGER':
                     message = 'This user is manager, therefore he is in charge of no customer'
                     raise NotFound(detail=message, code=404)
@@ -180,7 +193,27 @@ class ContractViewset(CheckPathMixin, ModelViewSet):
             if is_manager:
                 return models.Contract.objects.all()
             else:
-                return models.Contract.objects.filter(Q(seller=current_user) | Q(support=current_user))                  
+                return models.Contract.objects.filter(Q(seller=current_user) | Q(support=current_user))
+
+    def get_queryset(self):
+        queryset = self.fetch_queryset()
+        last_name = self.request.query_params.get('last_name')
+        compagny_name = self.request.query_params.get('compagny_name')
+        date = self.request.query_params.get('date')
+        due_low = self.request.query_params.get('due_low')
+        due_high = self.request.query_params.get('due_high')
+
+        queryset = queryset.filter(customer__last_name__icontains=last_name
+                            ) if last_name != None and last_name != '' else queryset
+        queryset = queryset.filter(customer__compagny_name__icontains=compagny_name
+                            ) if compagny_name != None and compagny_name != '' else queryset
+        queryset = queryset.filter(date_created__icontains=date
+                            ) if date != None and date != '' else queryset
+        queryset = queryset.filter(due__gt=float(due_low)
+                            ) if due_low != None and due_low != '' else queryset
+        queryset = queryset.filter(due__lt=float(due_high)
+                            ) if due_high != None and due_high != '' else queryset
+        return queryset
     
     def get_serializer_class(self):
         if (self.action == 'retrieve' or self.action == 'create'
@@ -204,21 +237,14 @@ class ContractViewset(CheckPathMixin, ModelViewSet):
             if 'support' not in self.request.POST or 'customer' not in self.request.POST or 'seller' not in self.request.POST:
                 message = 'Missing fields (support, customer or seller)'
                 raise PermissionDenied(message, code=403)
-
-            seller = MODEL_USER.objects.get(id=self.request.POST['seller'])
-            if seller.role != 'SELLER':
-                message = 'The seller selected is not SELLER)'
-                raise PermissionDenied(message, code=403)
+            seller = self.check_role('SELLER')
         
         if self.request.user.role == 'SELLER':
             seller = self.request.user
         
-        support = MODEL_USER.objects.get(id=self.request.POST['support'])
-        if support.role != 'SUPPORT':
-            message = 'The support selected is not SUPPORT'
-            raise PermissionDenied(message, code=403)
+        support = self.check_role('SUPPORT')
         
-        customer = models.Customer.objects.get(id=self.request.POST['customer'])
+        customer = get_object_or_404(models.Customer, id=self.request.POST['customer'])
         if customer.existing == False:
             customer.existing = True
             customer.save()
@@ -232,28 +258,21 @@ class ContractViewset(CheckPathMixin, ModelViewSet):
         """
         self.check_path_user_customer()
         self.check_fields()
-        contract = models.Contract.objects.get(id=self.kwargs['pk'])
         
         if 'support' in self.request.POST:
-            support = MODEL_USER.objects.get(id=self.request.POST['support'])
-            if support.role != 'SUPPORT':
-                message = 'The support selected is not SUPPORT'
-                raise PermissionDenied(message, code=403)
+            support = self.check_role('SUPPORT')
             serializer.save(support=support)
         
         if 'seller' in self.request.POST:
-            seller = MODEL_USER.objects.get(id=self.request.POST['seller'])
-            if seller.role != 'SELLER':
-                message = 'The seller selected is not SELLER'
-                raise PermissionDenied(message, code=403)
+            seller = self.check_role('SELLER')
             serializer.save(seller=seller)
 
         if 'customer' in self.request.POST:
-            serializer.save(customer=models.Customer.objects.get(
+            customer = get_object_or_404(models.Customer.objects.get(
                             id=self.request.POST['customer']))
-        
-        serializer.save()
-        return contract
+            serializer.save(customer=customer)
+
+        return super().perform_update(serializer)
     
     def perform_destroy(self, instance):
         """
@@ -274,15 +293,22 @@ class ContractViewset(CheckPathMixin, ModelViewSet):
                 message = 'You are trying to update unupdatable fields'
                 raise PermissionDenied(message, code=403)
 
+    def check_role(self, role):
+        user = get_object_or_404(MODEL_USER, id=self.request.POST[role.lower()])
+        if user.role != role:
+            message = 'The support selected is not SUPPORT'
+            raise PermissionDenied(message, code=403)
+        return user
+
 class EventViewset(CheckPathMixin, ModelViewSet):
     serializer_class = serializers.EventListSerializer
     detail_serializer_class = serializers.EventDetailSerializer
 
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated,
-        permissions.EventPermission]
+                    permissions.EventPermission]
 
-    def get_queryset(self):
+    def fetch_queryset(self):
         """
         The queryset is similar than for the customers and contracts. Only a MANAGER
         can acces the /user/ extentions endpoint.
@@ -300,7 +326,8 @@ class EventViewset(CheckPathMixin, ModelViewSet):
                 if user.role == 'MANAGER':
                     raise NotFound(detail='This user is manager, therefore he is in charge of no event', code=404)
                 else:
-                    events_list = models.Contract.objects.filter(Q(seller=user) | Q(support=user))
+                    print('slt')
+                    events_list = models.Contract.objects.filter(Q(seller=user) | Q(support=user)).values('event')
                     return models.Event.objects.filter(id__in=events_list)
             else:
                 raise PermissionDenied('You are not authorized to perform this action', code=403)
@@ -324,8 +351,33 @@ class EventViewset(CheckPathMixin, ModelViewSet):
             else:
                 events_list = models.Contract.objects.filter(
                     Q(seller=current_user) | Q(support=current_user)).values('event')
-                print(events_list)
                 return models.Event.objects.filter(id__in=events_list)
+
+    def get_queryset(self):
+        queryset = self.fetch_queryset()
+        last_name = self.request.query_params.get('last_name')
+        compagny_name = self.request.query_params.get('compagny_name')
+        email = self.request.query_params.get('email')
+        date = self.request.query_params.get('date')
+
+        queryset_contract_last_name = models.Contract.objects.filter(
+                    event__in=queryset, customer__last_name__icontains=last_name).values(
+                                'event') if last_name != None and last_name != '' else queryset
+        queryset = models.Event.objects.filter(id__in=queryset_contract_last_name)
+
+        queryset_contract_compagny_name = models.Contract.objects.filter(
+                    event__in=queryset, customer__compagny_name__icontains=compagny_name).values(
+                                'event') if compagny_name != None and compagny_name != '' else queryset
+        queryset = models.Event.objects.filter(id__in=queryset_contract_compagny_name)
+
+        queryset_contract_email = models.Contract.objects.filter(
+                    event__in=queryset, customer__email__icontains=email).values(
+                                'event') if email != None and email != '' else queryset
+        queryset = models.Event.objects.filter(id__in=queryset_contract_email)
+
+        queryset = queryset.filter(date_event__icontains=date
+                                ) if date != None and date != '' else queryset
+        return queryset
     
     def get_serializer_class(self):
         if (self.action == 'retrieve' or self.action == 'create'
@@ -339,12 +391,12 @@ class EventViewset(CheckPathMixin, ModelViewSet):
         Update the status of the contract when creating an event.
         """
         self.check_path_user_customer()
-        contract = models.Contract.objects.get(id=self.kwargs['contract_pk'])
+        contract = get_object_or_404(models.Contract, id=self.kwargs['contract_pk'])
         if contract.signed:
             message = 'This contract is already signed'
             raise PermissionDenied(message, code=403)
 
-        event = serializer.save()
+        event = serializer.save(finished=False)
         contract.event = event
         contract.signed = True
         contract.date_signed = pytz.UTC.localize(datetime.now())
@@ -356,7 +408,8 @@ class EventViewset(CheckPathMixin, ModelViewSet):
         Prevent a user from updating a finished event.
         """
         self.check_path_user_customer()
-        if models.Event.objects.get(id=self.kwargs['pk']).finished:
+        event = get_object_or_404(models.Event, id=self.kwargs['pk'])
+        if event.finished:
             message = 'Can\'t update a finished event'
             raise PermissionDenied(message, code=403)
         return super().perform_update(serializer)

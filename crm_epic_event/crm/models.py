@@ -88,15 +88,20 @@ class Contract(models.Model):
     signed = models.BooleanField(default=False)
     date_signed = models.DateTimeField(auto_now_add=False, blank=True, null=True)
     due = models.FloatField(max_length=10)
+    payed = models.BooleanField(default=False)
 
     def save(self, *args, **kwargs):
         """
         A contract with a non existing customer update his status existing to True.
         """
         self.date_updated = datetime.now()
+        self.update_customer_status()
+        super().save(*args, **kwargs)
+    
+    def update_customer_status(self):
+        self.date_updated = datetime.now()
         self.customer.existing = True
         self.customer.save()
-        super().save(*args, **kwargs)
 
     def sign(self, name_event, location_event, date_event):
         """

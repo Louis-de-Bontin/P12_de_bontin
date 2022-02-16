@@ -82,6 +82,7 @@ class ContractListSerializer(ModelSerializer):
             'customer',
             'event',
             'signed',
+            'date_created',
             'id'
         ]
 

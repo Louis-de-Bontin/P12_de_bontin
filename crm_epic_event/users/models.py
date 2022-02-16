@@ -18,9 +18,13 @@ class User(AbstractUser):
     last_name = models.CharField(max_length=25)
     email = models.EmailField(max_length=100)
     phone = PhoneField(null=True, blank=True, help_text='Phone number')
-    password = models.CharField(max_length=255, default='pbkdf2_sha256$320000$L6khXQtNTMetZuru1H3OP6$RiqoWu9cahq4nn5I7N8IackYEG0vH4GUxY5IDVWQ818=')
-    # Il faudra que les manager soient admin
+    password = models.CharField(max_length=255)
     role = models.CharField(choices=ROLE_CHOICES, default='MANAGER', max_length=10)
 
     def __str__(self):
         return self.username
+    
+    def save(self, *args, **kwargs):
+        if self.role == 'MANAGER':
+            self.is_superuser == True
+        super().save(*args, **kwargs)
