@@ -234,7 +234,9 @@ class ContractViewset(CheckPathMixin, ModelViewSet):
         self.check_path_user_customer()
         self.check_fields()
         if self.request.user.role == 'MANAGER':
-            if 'support' not in self.request.POST or 'customer' not in self.request.POST or 'seller' not in self.request.POST:
+            if ('support' not in self.request.POST
+            or 'customer' not in self.request.POST
+            or 'seller' not in self.request.POST):
                 message = 'Missing fields (support, customer or seller)'
                 raise PermissionDenied(message, code=403)
             seller = self.check_role('SELLER')

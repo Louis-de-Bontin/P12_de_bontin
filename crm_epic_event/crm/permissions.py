@@ -18,6 +18,7 @@ class CustomerPermissions(BasePermission):
                 return True
         return False
 
+
 class ContractPermissions(BasePermission):
     def has_permission(self, request, view):
         """

@@ -24,7 +24,6 @@ import users.views
 
 
 router = routers.SimpleRouter()
-# router.register('signup', users.views.UserViewset, basename='signup')
 router.register('users', users.views.UserViewset, basename='users')
 router.register('customers', crm.views.CustomerViewset, basename='customers')
 router.register('contracts', crm.views.ContractViewset, basename='contracts')
