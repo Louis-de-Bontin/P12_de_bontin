@@ -27,6 +27,6 @@ class UserViewset(ModelViewSet):
         if 'role' in serializer.validated_data:
             if serializer.validated_data['role'] == 'MANAGER':
                 serializer.validated_data['is_superuser'] = True
-        if not 'password' in serializer.validated_data:
-            raise ValidationError('Please enter a password', code=403)
+        # if not 'password' in serializer.validated_data:
+        #     raise ValidationError('Please enter a password', code=403)
         super().perform_create(serializer)
