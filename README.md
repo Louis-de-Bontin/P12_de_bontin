@@ -1,6 +1,14 @@
 # P12_de_bontin
 12th project of my formation OpenClassrooms
 
+### Login :
+###### (Password is always `jambon12`)
+- Damiem (Manager)
+- Jamy (Seller)
+- François (Support)
+- Marie (Manager)
+- Patrick (Seller)
+- Xavier (Manager)
 
 ### Installing Django
 - Create a new folder `mkdir my_folder`
