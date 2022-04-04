@@ -3,7 +3,7 @@
 
 ### Login :
 ###### (Password is always `jambon12`)
-- Damiem (Manager)
+- Damien (Manager)
 - Jamy (Seller)
 - François (Support)
 - Marie (Manager)
