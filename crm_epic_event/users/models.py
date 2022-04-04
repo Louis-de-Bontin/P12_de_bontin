@@ -18,7 +18,6 @@ class User(AbstractUser):
     last_name = models.CharField(max_length=25)
     email = models.EmailField(max_length=100)
     phone = PhoneField(null=True, blank=True, help_text='Phone number')
-    password = models.CharField(max_length=255)
     role = models.CharField(choices=ROLE_CHOICES, default='MANAGER', max_length=10)
 
     def __str__(self):

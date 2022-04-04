@@ -62,9 +62,9 @@ class Event(models.Model):
         It is not possible to create an event with a passed date.
         """
         utc=pytz.UTC
-        if self.date_event < utc.localize(datetime.now()):
-            raise PermissionDenied(
-                'Event date can\'t be before event creation')
+        # if self.date_event < utc.localize(datetime.now()):
+        #     raise PermissionDenied(
+        #         'Event date can\'t be before event creation')
     
     def __str__(self):
         return self.name
@@ -116,7 +116,7 @@ class Contract(models.Model):
         event = Event()
         event.name=name_event
         event.location=location_event
-        event.date_event=datetime.strptime(date_event, '%d/%m/%y %H:%M')
+        event.date_event=datetime.strptime(date_event, '%d/%m/%Y %H:%M')
         event.save()
 
         self.event = event
